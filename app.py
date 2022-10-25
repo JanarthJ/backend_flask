@@ -101,7 +101,7 @@ def uploadCsv():
         print(file)
         return jsonify({
             "status":"Uploaded Successfully!..",
-            "Columns":columns
+            "columns":columns
         }) 
     except Exception as e:
         print(e)
