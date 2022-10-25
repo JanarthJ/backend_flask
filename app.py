@@ -2,8 +2,15 @@ import re
 from flask import Flask,request
 from flask_jsonpify import jsonify
 from random import randint
-app = Flask(__name__)
+from flask_cors import CORS
 import db
+import pandas as pd
+
+
+
+app = Flask(__name__)
+CORS(app)
+
 
 def token():
     tok=""
@@ -14,27 +21,30 @@ def token():
 #sample test api
 @app.route('/')
 def flask_mongodb_atlas():
+    print("Called")
     return "flask mongodb atlas!"
 
 #api for verification
 @app.route('/checkAuth',methods=['POST'])
-def verify():
+def checkAuth():
+    print("verifyauth")
     data = request.get_json()
     print(data)    
     try:
-        users=db.db.userCollection.find({"email": data["email"],"token":data["token"]}) 
+        users=db.db.userCollection.find({"email": data["Email"],"token":data["token"]}) 
         output = [{'Email' : user['email']} for user in users] 
         if len(output)==1:
             return jsonify({"status":"Valid"})
         else:
             return jsonify({"status":"Notvalid"})  
-    except:
+    except Exception as e:
+        print(e)
         return jsonify({"status":"Notvalid"})  
 
    
 
 #user creation >>sign up api
-@app.route('/api/createuser', methods=['POST'])
+@app.route('/createuser', methods=['POST'])
 def createUser():
     request_data = request.get_json()
     print(request_data)
@@ -43,13 +53,14 @@ def createUser():
     print(output)
     try:
         if len(output) > 0:
-            return "EMail already found"
+            return jsonify({"status":"EMail Already Exist"})
         else:            
             db.db.userCollection.insert_one(request_data) 
             print("created successfully")
             return jsonify({"status":"user created Successfully"})  
             
-    except:
+    except Exception as e:
+        print(e)
         return jsonify({"status":"Server Error"})  
 
 #api for login
@@ -74,8 +85,29 @@ def read():
         else:
             return jsonify({"status":"Invalid credential"}) 
             
-    except:
+    except Exception as e:
+        print(e)
         return jsonify({"status":"Server Error"})  
+
+
+@app.route('/uploadcsv',methods=['POST'])
+def uploadCsv():
+    print("Called")
+    try:
+        file=request.files.get('file')
+        f = pd.read_csv(file)
+        columns = list(f.head(0))
+        print(columns)
+        print(file)
+        return jsonify({
+            "status":"Uploaded Successfully!..",
+            "Columns":columns
+        }) 
+    except Exception as e:
+        print(e)
+        return jsonify({"status":"Internal Server Error"}) 
+
+
 
 if __name__ == '__main__':
     app.run(port=5002)
