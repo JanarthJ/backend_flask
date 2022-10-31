@@ -10,7 +10,7 @@ import warnings
 import itertools
 import datetime as dt
 import math
-
+import numpy as np
 from pandas.plotting import autocorrelation_plot
 # from statsmodels.tsa.statespace.sarimax import SARIMAX
 import matplotlib
@@ -145,247 +145,6 @@ def uploadCsv():
         return jsonify({"status":"Internal Server Error"}) 
 
 
-def predict():
-    print("Pridict Called")
-    try:
-        import pandas as pd
-        import numpy as np
-        file=request.files.get('file')
-        predictColumn=request.form.get('columnPredict')
-        fromDate=request.form.get('fromDate')
-        toDate=request.form.get('toDate')
-        print(predictColumn,fromDate,toDate)
-        # f = pd.read_csv(file)        
-        # print(file)
-        df = pd.read_csv(file)
-        print(df)
-        columns = list(df.head(0))
-        print(columns)
-        df.head(10)
-        df.shape
-        df.info()
-        df.describe()
-        df.isnull().sum()
-        sales = df.copy()
-        sales = sales.drop("Postal Code", axis = 1) #axis=1 for column
-        sales.info()
-        sales['Order Date'] = pd.to_datetime(sales['Order Date'], dayfirst=True)
-        sales['Ship Date'] = pd.to_datetime(sales['Ship Date'], dayfirst=True)
-        sales.info()
-
-        print("CK1")
-        sales = sales.loc[:, ["Order Date", "Sales", "Profit"]]
-
-        #Set date column to index
-        sales.set_index('Order Date', inplace = True)
-        print(sales.info())
-        sales = sales.groupby("Order Date").sum()
-        sales
-        print("CK2")
-        # sales_by_year = pd.DataFrame()
-        # sales_by_year
-        print("CK21")
-        # l=["2011","2012","2013","2014"]
-        # try:
-        #     # for year in l:
-        #     #     print("loop")
-        #     #     print("y=",year)
-        #     #     temp_year = sales.loc[year, ["Sales"]]
-        #     #     print("ty")
-        #     #     temp_year.rename(columns={"Sales": year}, inplace = True)
-        #     #     print("tymo")
-        #     #     sales_by_year = pd.concat([sales_by_year, temp_year], axis=1)
-        #     #     print("end")
-        # except Exception as e:
-        #     print(e)
-
-        # sales_by_year
-        print("CK3")
-
-        monthly_sales = sales.groupby(pd.Grouper(freq='MS')).sum()
-
-        print("CK4")
-
-        from statsmodels.tsa.stattools import acf
-
-        # Create Training and Test
-        train = monthly_sales[["Sales"]][:36]
-        test = monthly_sales[["Sales"]][36:]
-        print("CK5")
-        from statsmodels.tsa.stattools import adfuller
-
-        result = adfuller(monthly_sales["Sales"])
-        print('ADF Statistic: %f' % result[0])
-        print('p-value: %f' % result[1])
-
-        from statsmodels.tsa.arima.model import ARIMA
-        import warnings
-        warnings.filterwarnings("ignore")
-
-        # order=(p, d, q)
-        model = ARIMA(train["Sales"], order=(2, 1, 0))
-        model_fit = model.fit()
-        print(model_fit.summary())
-
-        from sklearn.metrics import mean_squared_error
-        y = test.values.astype('float32')
-
-        X = train.values.astype('float32')
-
-        # create a differenced series
-        def difference(X, interval=1):
-            diff = list()
-            for i in range(interval, len(X)):
-                value = X[i] - X[i - interval]
-                diff.append(value)
-            return diff
-        
-        # invert differenced value
-        def inverse_difference(history, yhat, interval=1):
-            return yhat + history[-interval]
-
-        history = [x for x in X] #Create a list of all training data
-        months_in_year = 12
-        predictions=list()
-        yhat = float(model_fit.forecast()[0])
-        yhat = inverse_difference(history, yhat, months_in_year)
-        predictions.append(y[0])
-        history.append(y[0])
-        print('Predicted: {yhat:.3f}, Expected: {y[0]:.3f}') #output first month's performance
-
-        #loop through all months and calculate performance
-        for i in range(1, len(y)):
-            months_in_year = 12
-            diff = difference(history, months_in_year) #account for seasonality
-            model = ARIMA(diff, order=(2, 1, 0)) #create ARIMA model
-            model_fit = model.fit() #fit model
-            yhat = model_fit.forecast()[0] #get prediction value
-            yhat = inverse_difference(history, yhat, months_in_year) #reverse the difference to get value
-            predictions.append(yhat) #add predicted value to list
-            # observation
-            obs = y[i]
-            history.append(obs)
-            print('Predicted: %.3f, Expected: %.3f' % (yhat, obs))
-        
-        # report performance
-        rmse = np.sqrt(mean_squared_error(y, predictions))
-        print('\nRMSE: %.3f' % rmse)
-
-        import statsmodels.api as sm
-
-        q = d = range(0, 2)
-        # Define the p parameters to take any value between 0 and 3
-        p = range(0, 4)
-
-        # Generate all different combinations of p, q and q triplets
-        pdq = list(itertools.product(p, d, q))
-
-        # Generate all different combinations of seasonal p, q and q triplets
-        seasonal_pdq = [(x[0], x[1], x[2], 12) for x in list(itertools.product(p, d, q))]
-
-        print('Examples of parameter combinations for Seasonal ARIMA...')
-        print('SARIMAX: {} x {}'.format(pdq[1], seasonal_pdq[1]))
-        print('SARIMAX: {} x {}'.format(pdq[1], seasonal_pdq[2]))
-        print('SARIMAX: {} x {}'.format(pdq[2], seasonal_pdq[3]))
-        print('SARIMAX: {} x {}'.format(pdq[2], seasonal_pdq[4]))
-
-        warnings.filterwarnings("ignore") # specify to ignore warning messages
-
-        AIC = []
-        SARIMAX_model = []
-        for param in pdq:
-            for param_seasonal in seasonal_pdq:
-                try:
-                    mod = sm.tsa.statespace.SARIMAX(X,
-                                                    order=param,
-                                                    seasonal_order=param_seasonal,
-                                                    enforce_stationarity=False,
-                                                    enforce_invertibility=False)
-
-                    results = mod.fit()
-
-                    print('SARIMAX{}x{} - AIC:{}'.format(param, param_seasonal, results.aic), end='\r')
-                    AIC.append(results.aic)
-                    SARIMAX_model.append([param, param_seasonal])
-                    print("end sarimax")
-                except:
-                    continue
-        
-        print("End")
-
-        mod = sm.tsa.statespace.SARIMAX(X,
-                                order=SARIMAX_model[AIC.index(min(AIC))][0],
-                                seasonal_order=SARIMAX_model[AIC.index(min(AIC))][1],
-                                enforce_stationarity=False,
-                                enforce_invertibility=False)
-
-        results = mod.fit()
-        print("result")
-
-        import datetime as dt
-        import math
-
-        from pandas.plotting import autocorrelation_plot
-        from statsmodels.tsa.statespace.sarimax import SARIMAX
-        from sklearn.preprocessing import MinMaxScaler
-
-
-        pd.options.display.float_format = '{:,.2f}'.format
-        np.set_printoptions(precision=2)
-        warnings.filterwarnings("ignore") # specify to ignore warning messages
-        print("end res")
-
-
-        train_start_dt = '2011-11-01 00:00:00'
-        test_start_dt = '2014-11-01 00:00:00'
-
-        scaler = MinMaxScaler()
-        train['load'] = scaler.fit_transform(train)
-        train.head(10)
-        print("res11")
-        train
-        df['prediction'] = train['load']
-        out = df[['Order Date',"prediction"]]
-        out
-        print(out)
-        print("ended")
-        # out.to_csv("D:\kaar_jj\submission.csv", index = False)
-
-
-
-
-
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-        # out.to_csv("/home/janarthanan/submission.csv", index = False)
-        # print("this is hello fun")   
-
-        return jsonify({
-            "status":"Predicted Successfully!.."
-        })     
-    except Exception as e:
-        print(e)
-        return jsonify({"status":"Internal Server Error"}) 
-
 
 
 @app.route('/predict',methods=['POST'])
@@ -398,23 +157,61 @@ def forecast_predict():
         print(targetColumn,dayPredict)
         print(type(targetColumn),type(dayPredict))
         train = pd.read_csv(file)
-        # print(len(train))
-        columns = list(train.head(0))
-        print(columns)
+        train.head(5)
+        train.describe()
+        #EDA PART************
+
+        train.isnull().sum()
+        train = train.drop(["Open","Promo"], axis = 1) #axis=1 for column
+        train.info()
+        #Normalization PART*******
+        x_train=train.copy()
+        x_train=x_train.drop(["Date","StateHoliday"], axis = 1)
+        # data normalization with sklearn
+        from sklearn.preprocessing import MinMaxScaler
+
+        # fit scaler on training data
+        norm = MinMaxScaler().fit(x_train)
+
+        # transform training data
+        X_train_norm = norm.transform(x_train)
+
+        # standardization with  sklearn
+        from sklearn.preprocessing import StandardScaler
+
+        #x_train
+
+        # apply standardization on numerical features
+        for i in x_train:            
+            # fit on training data column
+            scale = StandardScaler().fit(x_train[[i]])
+            
+            # transform the training data column
+            x_train[i] = scale.transform(x_train[[i]])
+        
         # train.head(5)
 
         train['SalesPerCustomer'] = train['Sales']/train['Customers']
         train['SalesPerCustomer'].head()   
         train = train.dropna()
+
         print("CK1")
         sales = train[train.Store == 1].loc[:, ['Date', targetColumn]]
         print("CK2")
+
         # reverse to the order: from 2013 to 2015
         sales = sales.sort_index(ascending = False)
 
         sales['Date'] = pd.DatetimeIndex(sales['Date'])
         sales.dtypes
         print("CK3")
+        from statsmodels.tsa.stattools import adfuller
+
+        result = adfuller(sales[targetColumn])
+        print('ADF Statistic: %f' % result[0])
+        print('p-value: %f' % result[1])
+        print("CK34")
+
         sales = sales.rename(columns = {'Date': 'ds',targetColumn: 'y'})
         print("CK4")
         sales_prophet = Prophet(changepoint_prior_scale=0.05, daily_seasonality=True)
@@ -426,6 +223,16 @@ def forecast_predict():
         sales_forecast = sales_prophet.predict(sales_forecast)
         
         print("CK6")
+        #RMSE PART 
+        # report performance
+        from sklearn.metrics import mean_squared_error
+        rmse = np.sqrt(mean_squared_error(sales_forecast['daily'], sales_forecast['trend']))
+        print('\nRMSE: %.3f' % rmse)
+
+        #MAPE part
+        mape=np.sum(sales_forecast['trend'])/np.sqrt(mean_squared_error(sales_forecast['daily'], sales_forecast['trend'])) *100
+        print('\nMAPE: %.3f' % mape)
+
         print(len(sales_forecast))        
         print("CK7")
         # matplotlib parameters
@@ -444,7 +251,11 @@ def forecast_predict():
         print("CK8")
         return jsonify({
             "status":"Uploaded Successfully!..",
-            "graph":url
+            "graph":url,
+            "ADF_Statistic":float(result[0]),
+            "p-value":float(result[1]),
+            "rmse":rmse,
+            "mape":mape
         }) 
     except Exception as e:
         print(e)
