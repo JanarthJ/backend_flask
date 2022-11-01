@@ -5,22 +5,13 @@ from flask_cors import CORS
 import db
 import pandas as pd
 import matplotlib.pyplot as plt
-# from statsmodels.tsa.arima_model import ARIMA
-import warnings
-import itertools
-import datetime as dt
-import math
 import numpy as np
-from pandas.plotting import autocorrelation_plot
-# from statsmodels.tsa.statespace.sarimax import SARIMAX
 import matplotlib
 matplotlib.use('Agg')
-# import matplotlib.pyplot as plt
-# from flask import Flask, render_template
 from io import BytesIO
 import base64
 
-
+out=""
 
 app = Flask(__name__)
 CORS(app)
@@ -38,6 +29,7 @@ def flask_mongodb_atlas():
     print("Called")
     return "flask mongodb atlas!"
 
+#sample test api
 @app.route('/plot')
 def plot():
     img = BytesIO()
@@ -122,7 +114,7 @@ def read():
         print(e)
         return jsonify({"status":"Server Error"})  
 
-
+#api for upload csv
 @app.route('/uploadcsv',methods=['POST'])
 def uploadCsv():
     print("Called")
@@ -131,8 +123,8 @@ def uploadCsv():
         ftrain = pd.read_csv(file)
         ftrain['SalesPerCustomer'] = ftrain['Sales']/ftrain['Customers']
         ftrain['SalesPerCustomer'].head()
-        columns = list(ftrain.head(0))
-        print(columns)
+        # ftrain.head(5)
+        ftrain.describe()
         targetPredictColumns=["Sales","Customers","SalesPerCustomer"]
         print(file)
         # print(hello(file))
@@ -146,9 +138,10 @@ def uploadCsv():
 
 
 
-
+#api for prediction
 @app.route('/predict',methods=['POST'])
 def forecast_predict():
+    global out
     try:
         from prophet import Prophet
         file=request.files.get('file')
@@ -241,7 +234,7 @@ def forecast_predict():
         matplotlib.rcParams['ytick.labelsize'] = 14
         matplotlib.rcParams['text.color'] = 'k'
         img = BytesIO()
-        sales_prophet.plot(sales_forecast, xlabel = 'Date', ylabel = 'targetColumn')
+        sales_prophet.plot(sales_forecast, xlabel = 'Date', ylabel = targetColumn)
         # plt.title('Drug Store Forecasting',fontsize=18, color= 'green', fontweight='bold')
         plt.savefig(img, format='png')
         plt.close()
@@ -249,17 +242,25 @@ def forecast_predict():
         plot_url = base64.b64encode(img.getvalue()).decode('utf8')
         url="data:image/png;base64,"+str(plot_url)
         print("CK8")
+        out = sales_forecast
+        # out.to_csv("submission.csv")   
+        val=randint(0,1000)
+        out.to_csv("/home/janarthanan/KProjects/submission"+str(val)+".csv")
         return jsonify({
             "status":"Uploaded Successfully!..",
             "graph":url,
             "ADF_Statistic":float(result[0]),
-            "p-value":float(result[1]),
+            "p_value":float(result[1]),
             "rmse":rmse,
-            "mape":mape
+            "mape":mape,
+            "path":"/home/janarthanan/KProjects/submission"+str(val)+".csv"
         }) 
     except Exception as e:
         print(e)
         return jsonify({"status":"Internal Server Error"}) 
+
+
+
 
 if __name__ == '__main__':
     app.run(port=5002)
