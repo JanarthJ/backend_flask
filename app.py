@@ -30,6 +30,13 @@ def flask_mongodb_atlas():
     return "flask mongodb atlas!"
 
 #sample test api
+@app.route('/api')
+def flask_mongodb():
+    print("Called")
+    return "flask api called!"
+
+
+#sample test api
 @app.route('/plot')
 def plot():
     img = BytesIO()
